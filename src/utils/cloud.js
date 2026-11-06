@@ -95,5 +95,33 @@ export function uploadFile(filePath, cloudPath) {
   // #endif
 }
 
+/**
+ * 删除云存储上的文件（用于「图片删了但还没保存」时清理孤儿文件）
+ * @param {string[]} fileIDs 云存储 fileID 数组
+ * @returns {Promise<void>} 永不 reject：清理失败不应该阻断主流程
+ */
+export function deleteFiles(fileIDs = []) {
+  if (!fileIDs.length) return Promise.resolve()
+
+  // #ifdef MP-WEIXIN
+  return new Promise((resolve) => {
+    wx.cloud.deleteFile({
+      fileList: fileIDs,
+      success: () => resolve(),
+      fail: (err) => {
+        // 只记录日志，不抛错：用户删图是主动行为，清理失败不影响他的操作
+        console.warn('[cloud] 删除文件失败（已忽略）：', err)
+        resolve()
+      }
+    })
+  })
+  // #endif
+
+  // #ifndef MP-WEIXIN
+  return Promise.resolve()
+  // #endif
+}
+
 /* 便捷方法：直接拿到当前环境的云函数名 */
 export const FN_USER = CLOUD_FUNCTIONS.user
+export const FN_DISH = CLOUD_FUNCTIONS.dish

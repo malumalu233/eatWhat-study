@@ -24,7 +24,7 @@
 
     <!-- ============ 两个核心功能入口 ============ -->
     <view class="actions">
-      <view class="action-card anim-up anim-up--delay1" @tap="onTodo('录入菜品')">
+      <view class="action-card anim-up anim-up--delay1" @tap="goCreateDish">
         <view class="action-card__art">
           <LineArt type="plate" size="sm" />
         </view>
@@ -122,7 +122,22 @@ async function handleLogin() {
   }
 }
 
-/** 第一步只搭骨架，后续功能用 toast 占位，避免误以为已经实现 */
+/**
+ * 进入菜品录入页
+ *
+ * 为什么用 navigateTo 而不是 Tab / 弹窗？
+ * navigateTo 打开的是「二级页面」：三个主 Tab 不受影响，原生导航栏自带上返回按钮，
+ * 编辑完成后 navigateBack 就回到首页，状态还在。
+ */
+async function goCreateDish() {
+  // 没登录时先尝试静默登录（拿 openid 用于图片目录与 _openid 归属）
+  if (!userStore.logged && !userStore.loading) {
+    await loginSilently()
+  }
+  uni.navigateTo({ url: '/pages/dish/edit' })
+}
+
+/** 尚未实现的入口，用 toast 占位，避免误以为已经做完 */
 function onTodo(name) {
   uni.showToast({
     title: `「${name}」将在后续步骤实现`,
