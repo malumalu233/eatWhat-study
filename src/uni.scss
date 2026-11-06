@@ -1,0 +1,68 @@
+/**
+ * uni.scss —— 全局 SCSS 变量表
+ *
+ * 为什么叫这个名字：uni-app 编译时会把本文件【自动注入】到每一个 .vue 文件的
+ * <style lang="scss"> 里，所以任何页面都能直接使用下面这些变量，不用手动 @import。
+ *
+ * 注意：这个文件里【只能放变量 / mixin】，不要写会输出 CSS 的规则，
+ * 否则每个页面都会重复输出一份样式，导致最终包体积翻倍。
+ *
+ * 设计语言：温馨日系治愈风 + 简约圆角扁平化
+ */
+
+/* ---------- 主色板 ---------- */
+$c-cream: #fff9f0; // 奶油米白：页面底色
+$c-apricot: #ffb88c; // 暖橘杏：主强调色（按钮、选中态）
+$c-matcha: #d6e4d0; // 浅抹茶绿：辅助色（标签、成功态）
+$c-gray: #eaeaea; // 辅助浅灰：分割线、禁用态
+$c-coffee: #5c4b3e; // 深咖：主文字色
+$c-text-sub: #9c9189; // 次级文字（由深咖淡化而来，比纯灰更暖）
+$c-white: #ffffff; // 卡片底色
+
+/* ---------- 圆角 ---------- */
+/* 规范要求“全页面大圆角、拒绝直角”，统一以 12rpx 为基准值，*/
+/* 尺寸更大的容器（卡片、弹窗）在此基础上放大，视觉才够柔和 */
+$r-sm: 12rpx; // 按钮 / 输入框 / 标签（规范基准值）
+$r-md: 24rpx; // 小卡片 / 图片
+$r-lg: 32rpx; // 大卡片 / 弹窗
+$r-pill: 999rpx; // 胶囊（头像、圆形按钮）
+
+/* ---------- 字号（rpx ≈ 设计稿 px × 2，750rpx = 屏幕宽度） ---------- */
+$f-title: 36rpx; // 18px 标题加粗
+$f-body: 28rpx; // 14px 正文
+$f-helper: 24rpx; // 12px 辅助小字
+$lh-body: 1.75; // 宽松行间距
+
+/* ---------- 间距与阴影 ---------- */
+$gap-xs: 8rpx;
+$gap-sm: 16rpx;
+$gap-md: 24rpx;
+$gap-lg: 40rpx;
+$gap-xl: 64rpx; // 大量留白
+
+/* 极柔和的投影：日系风不用黑色硬阴影，用暖咖色 + 极低透明度 */
+$shadow-soft: 0 8rpx 24rpx rgba(92, 75, 62, 0.06);
+$shadow-card: 0 12rpx 32rpx rgba(92, 75, 62, 0.08);
+
+/* ---------- 常用 mixin ---------- */
+/* 单行省略 */
+@mixin ellipsis {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 多行省略 */
+@mixin ellipsis-multi($line: 2) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: $line;
+  overflow: hidden;
+}
+
+/* 标准卡片：白底 + 大圆角 + 柔和阴影 */
+@mixin card {
+  background-color: $c-white;
+  border-radius: $r-lg;
+  box-shadow: $shadow-soft;
+}

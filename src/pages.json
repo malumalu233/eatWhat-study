@@ -1,0 +1,51 @@
+{
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "今天吃什么"
+			}
+		},
+		{
+			"path": "pages/circle/circle",
+			"style": {
+				"navigationBarTitleText": "饭圈"
+			}
+		},
+		{
+			"path": "pages/profile/profile",
+			"style": {
+				"navigationBarTitleText": "我的"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "今天吃什么",
+		"navigationBarBackgroundColor": "#FFF9F0",
+		"backgroundColor": "#FFF9F0",
+		"backgroundColorTop": "#FFF9F0",
+		"backgroundColorBottom": "#FFF9F0",
+		"enablePullDownRefresh": false
+	},
+	"tabBar": {
+		"color": "#A79E96",
+		"selectedColor": "#5C4B3E",
+		"backgroundColor": "#FFF9F0",
+		"borderStyle": "white",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"text": "首页"
+			},
+			{
+				"pagePath": "pages/circle/circle",
+				"text": "饭圈"
+			},
+			{
+				"pagePath": "pages/profile/profile",
+				"text": "我的"
+			}
+		]
+	}
+}
