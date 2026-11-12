@@ -32,7 +32,7 @@
         <text class="action-card__desc">把家里的拿手菜存起来</text>
       </view>
 
-      <view class="action-card action-card--accent anim-up anim-up--delay2" @tap="onTodo('今天吃什么')">
+      <view class="action-card action-card--accent anim-up anim-up--delay2" @tap="goDishList">
         <view class="action-card__art">
           <LineArt type="bowl" size="sm" />
         </view>
@@ -137,12 +137,17 @@ async function goCreateDish() {
   uni.navigateTo({ url: '/pages/dish/edit' })
 }
 
-/** 尚未实现的入口，用 toast 占位，避免误以为已经做完 */
-function onTodo(name) {
-  uni.showToast({
-    title: `「${name}」将在后续步骤实现`,
-    icon: 'none'
-  })
+/**
+ * 进入菜品列表页（第三步新增）
+ *
+ * 和录入页一样是「二级页面」：底部 Tab 不受影响，返回后首页状态还在。
+ */
+async function goDishList() {
+  if (!userStore.logged && !userStore.loading) {
+    // 列表要按 _openid 查自己的菜，没登录先静默登录一次
+    await loginSilently()
+  }
+  uni.navigateTo({ url: '/pages/dish/list' })
 }
 </script>
 

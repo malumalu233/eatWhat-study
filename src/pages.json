@@ -23,6 +23,18 @@
 			"style": {
 				"navigationBarTitleText": "录入菜品"
 			}
+		},
+		{
+			"path": "pages/dish/list",
+			"style": {
+				"navigationBarTitleText": "菜品"
+			}
+		},
+		{
+			"path": "pages/dish/detail",
+			"style": {
+				"navigationBarTitleText": "菜品详情"
+			}
 		}
 	],
 	"globalStyle": {

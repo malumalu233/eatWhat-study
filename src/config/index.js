@@ -18,12 +18,30 @@ export const CLOUD_FUNCTIONS = {
 /**
  * 菜品类型（第二步固定这 4 个）
  *
+ * ⚠️ 这是「唯一数据源」：录入页的类型 pill、列表页左侧的 Tab 都由它派生，
+ * 想加一个「凉菜」只改这一行，两个页面会同时生效，不用改第二处。
+ *
  * 预留的扩展方式：后续做「管理员自定义类型」时，
  * 在这里改为从云数据库 categories 集合拉取：
  *   const { data } = await getDB().collection('categories').get()
  * 页面只依赖这个数组，改数据源不用动 UI 代码。
  */
 export const DISH_CATEGORIES = ['硬菜', '软菜', '素菜', '汤']
+
+/**
+ * 「爱吃」Tab：不是菜品的真实类型，只用于展示我收藏过的菜
+ *
+ * 为什么不把它塞进 DISH_CATEGORIES？
+ * 因为录入菜品时绝不希望用户把一道菜的类型选成「爱吃」。
+ * 所以它单独存在，只在列表页拼到 Tab 末尾。
+ */
+export const FAVORITE_TAB = '爱吃'
+
+/**
+ * 列表页左侧的 Tab 序列 = 录入页的全部类型 + 「爱吃」
+ * 数组成员的顺序就是 Tab 的显示顺序。
+ */
+export const DISH_TABS = DISH_CATEGORIES.concat(FAVORITE_TAB)
 
 /** 菜品表单的各类限制（前后端共用一份常量，改一处即可） */
 export const DISH_LIMITS = {

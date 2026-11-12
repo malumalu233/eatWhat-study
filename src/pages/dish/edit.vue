@@ -3,8 +3,10 @@
     <!-- ============ 顶部提示 ============ -->
     <view class="notice anim-up">
       <view class="notice__text">
-        <text class="notice__title">把这道菜记下来</text>
-        <text class="t-helper notice__desc">填好之后，家里人点餐时就能看到</text>
+        <text class="notice__title">{{ isEdit ? '把这道菜改好' : '把这道菜记下来' }}</text>
+        <text class="t-helper notice__desc">
+          {{ isEdit ? '改完记得保存，家里人看到的就同步了' : '填好之后，家里人点餐时就能看到' }}
+        </text>
       </view>
       <LineArt type="plate" size="sm" />
     </view>
@@ -136,17 +138,18 @@
     <!-- ==================== 底部保存栏 ==================== -->
     <view class="footer">
       <button class="btn footer__btn" :loading="saving" :disabled="saving" @tap="submit">
-        {{ saving ? '保存中…' : '保存菜品' }}
+        {{ submitText }}
       </button>
     </view>
   </view>
 </template>
 
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import LineArt from '@/components/LineArt.vue'
 import { DISH_CATEGORIES, DISH_LIMITS } from '@/config'
-import { uploadDishImages, createDish, cleanupImages } from '@/api/dish'
+import { uploadDishImages, createDish, updateDish, getDish, cleanupImages } from '@/api/dish'
 
 /**
  * 制作步骤是否必填
@@ -193,6 +196,27 @@ const activeField = ref('')
 
 /** 保存中（禁用按钮 + 显示 loading） */
 const saving = ref(false)
+
+/**
+ * 编辑模式
+ * ------------------------------------------------------------------
+ * 本页同时承担「新增」与「修改」两件事：
+ *   /pages/dish/edit          → 新增（第三步之前就是这个模式）
+ *   /pages/dish/edit?_id=xxx  → 修改（第三步详情页的「修改」入口会这样打开）
+ * 两个模式共用表单、校验、上传逻辑，差别只在「保存时调哪个云函数」和「按钮文案」。
+ */
+const editId = ref('')
+
+/** 编辑模式下被删掉、但还没保存的云存储 fileID（保存成功后才真正删除） */
+const removedFileIDs = []
+
+const isEdit = computed(() => !!editId.value)
+
+/** 底部按钮文案 */
+const submitText = computed(() => {
+  if (saving.value) return '保存中…'
+  return isEdit.value ? '保存修改' : '保存菜品'
+})
 
 /* 用户开始修改时，立刻清掉对应字段的红色提示，避免一直挂着错 */
 watch(
@@ -286,9 +310,16 @@ function previewImage(index) {
 function removeImage(index) {
   const removed = imageList.value[index]
   imageList.value.splice(index, 1)
-  // 如果这张图已经传上云（比如上次保存失败重试前删掉），顺手清理掉孤儿文件
+
   if (removed && removed.fileID) {
-    cleanupImages([removed.fileID])
+    if (isEdit.value) {
+      // 修改模式：先记下来，等「保存修改」成功后再删云文件。
+      // 现在就删的话，用户删完图直接返回，数据库里还指着这张图，详情页就会裂图。
+      removedFileIDs.push(removed.fileID)
+    } else {
+      // 新增模式：这张图是之前保存失败时已经传到云上的，属于孤儿文件，可以立即清理
+      cleanupImages([removed.fileID])
+    }
   }
 }
 
@@ -391,20 +422,31 @@ async function submit() {
     }
 
     // ② 写数据库
-    uni.showLoading({ title: '正在保存', mask: true })
-    await createDish({
+    const payload = {
       name: form.name.trim(),
       images: imageIDs,
       steps: form.steps.trim(),
       category: form.category,
       isDietFriendly: form.isDietFriendly
-    })
+    }
+
+    uni.showLoading({ title: '正在保存', mask: true })
+    if (isEdit.value) {
+      // 修改模式：云函数会校验归属，不是自己录的菜会返回 403
+      await updateDish({ _id: editId.value, ...payload })
+      // 保存成功之后才清理被删掉的旧图，避免中途失败造成「图没了、记录还指着它」
+      if (removedFileIDs.length > 0) cleanupImages(removedFileIDs)
+    } else {
+      await createDish(payload)
+    }
 
     uni.hideLoading()
-    uni.showToast({ title: '保存成功', icon: 'none' })
+    uni.showToast({ title: isEdit.value ? '修改成功' : '保存成功', icon: 'none' })
+    // 通知列表页：数据变了，回到列表时记得刷新（列表页收到后只做标记，不立即请求）
+    uni.$emit('dish:list-dirty')
     succeeded = true
 
-    // ③ 回首页（给 toast 留一点展示时间，体验更顺）
+    // ③ 返回上一页（给 toast 留一点展示时间，体验更顺）
     setTimeout(() => {
       uni.navigateBack({ delta: 1 })
     }, 700)
@@ -424,6 +466,50 @@ async function submit() {
     if (!succeeded) saving.value = false
   }
 }
+
+/* ==================== 修改模式：回填原数据 ==================== */
+
+/**
+ * 把云端的菜品回填到表单
+ * @param {string} id 菜品 _id
+ */
+async function loadDish(id) {
+  uni.showLoading({ title: '加载中', mask: true })
+
+  try {
+    const dish = await getDish(id)
+
+    form.name = dish.name || ''
+    form.steps = dish.steps || ''
+    form.category = dish.category || ''
+    form.isDietFriendly = dish.isDietFriendly === true
+
+    // 云存储 fileID 可以直接当图片地址用（基础库 2.2.3 起），不需要先换临时链接；
+    // 把 fileID 同时写进 item.fileID，上传函数就会跳过它，不会重复上传。
+    imageList.value = (dish.images || []).map((fileID, index) => ({
+      key: `cloud_${index}_${fileID.slice(-10)}`,
+      path: fileID,
+      fileID,
+      status: 'done'
+    }))
+  } catch (err) {
+    console.error('[dish] 加载待修改菜品失败：', err)
+    uni.showToast({ title: err.message || '加载失败，请稍后重试', icon: 'none' })
+    setTimeout(() => uni.navigateBack(), 800)
+  } finally {
+    uni.hideLoading()
+  }
+}
+
+onLoad((query) => {
+  // 带 _id 进来就是「修改」，什么都没带就是「新增」
+  if (query && query._id) {
+    editId.value = query._id
+    // pages.json 里登记的是「录入菜品」，修改模式下换个标题更贴合语境
+    uni.setNavigationBarTitle({ title: '修改菜品' })
+    loadDish(query._id)
+  }
+})
 
 /* ==================== 图片九宫格布局 ==================== */
 

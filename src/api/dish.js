@@ -115,9 +115,11 @@ export async function createDish(payload) {
 }
 
 /**
- * 查询菜品列表（第二步还没有列表页，先把接口备好，第五步直接用）
- * @param {{category?:string, isDietFriendly?:boolean, page?:number, pageSize?:number}} filter
+ * 查询菜品列表
+ * @param {{category?:string, isDietFriendly?:boolean, onlyFavorite?:boolean, page?:number, pageSize?:number}} filter
+ *   onlyFavorite: true 表示只查「我收藏过的菜」（首页列表的「爱吃」Tab 用）
  * @returns {Promise<{list:object[], total:number}>}
+ *   返回的每一条都带 favoriteCount（被收藏次数）与 isFavorite（我是否收藏过）
  */
 export async function listDishes(filter = {}) {
   const res = await callFunction(FN_DISH, {
@@ -132,7 +134,7 @@ export async function listDishes(filter = {}) {
 }
 
 /**
- * 更新菜品（预留：第三步做完菜品列表后启用）
+ * 更新菜品（第三步已启用：详情页的「修改」入口会调它）
  * @param {object} payload 必须包含 _id
  */
 export async function updateDish(payload) {
@@ -143,6 +145,50 @@ export async function updateDish(payload) {
 
   if (!res || res.code !== 0) {
     throw new Error((res && res.msg) || '更新失败')
+  }
+  return res.data
+}
+
+/**
+ * 查询单条菜品详情
+ *
+ * 为什么不从列表页把整条数据传过来？
+ * 1. 页面路径只能传字符串，传对象要 JSON.stringify，又长又容易踩坑；
+ * 2. 详情页自己拿 _id 去查，就不用依赖「上一页一定传了数据」，
+ *    以后从分享卡片 / 订阅消息直接打开也能正常工作。
+ * @param {string} id 菜品 _id
+ * @returns {Promise<object>} 菜品文档（含 isFavorite / favoriteCount）
+ */
+export async function getDish(id) {
+  const res = await callFunction(FN_DISH, {
+    action: 'getDish',
+    data: { _id: id }
+  })
+
+  if (!res || res.code !== 0) {
+    throw new Error((res && res.msg) || '加载菜品失败')
+  }
+  return res.data
+}
+
+/**
+ * 收藏 / 取消收藏（同一个接口，点一下切换一次）
+ *
+ * 为什么不做成 addFavorite / removeFavorite 两个接口？
+ * 因为「该新增还是该删除」必须由服务端根据当前状态拍板：
+ * 前端自己判断一次、服务端再判断一次，就多了一份会互相打架的状态。
+ *
+ * @param {string} dishId 菜品 _id
+ * @returns {Promise<{isFavorite:boolean, favoriteCount:number}>} 切换后的最新状态
+ */
+export async function toggleFavorite(dishId) {
+  const res = await callFunction(FN_DISH, {
+    action: 'toggleFavorite',
+    data: { dishId }
+  })
+
+  if (!res || res.code !== 0) {
+    throw new Error((res && res.msg) || '操作失败')
   }
   return res.data
 }
