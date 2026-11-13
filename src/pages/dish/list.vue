@@ -152,7 +152,7 @@
       </scroll-view>
 
       <view class="sheet__foot">
-        <text class="t-helper">结算功能会在后续步骤开放，先把想吃的记下来</text>
+        <text class="t-helper">确认好了就点右下角的「去结算」</text>
       </view>
     </view>
   </view>
@@ -362,10 +362,36 @@ function closeSheet() {
   sheetVisible.value = false
 }
 
-/** 去结算：本步不实现，只给一个明确的提示 */
+/**
+ * 去结算：把已点的菜带进结算页（第四步新增）
+ *
+ * 为什么用 URL 传 JSON，而不是放进全局 store？
+ * 1. 列表页 → 结算页只跳一层，参数用完即弃，塞进 URL 最直接，
+ *    页面热重载 / 从后台恢复也不会丢；
+ * 2. 用 store 反而要额外写「取完就清空」的逻辑，忘了清就会带着上一单的菜进入下一次结算。
+ * 注意：URL 有长度上限（小程序大致 2KB），家庭场景一单 5~10 道菜完全够用；
+ * 真要点几十道菜，改成 store 传递即可，云函数不用动。
+ */
 function goCheckout() {
-  if (cartCount.value === 0) return
-  uni.showToast({ title: '结算功能将在后续步骤开放', icon: 'none' })
+  // 没点菜时按钮处于不可点视觉态，这里再拦一道，防止误触
+  if (cartCount.value === 0) {
+    uni.showToast({ title: '还没点菜呢', icon: 'none' })
+    return
+  }
+
+  // 抽屉可能正开着（用户可能从抽屉里点的去结算），先收起，避免返回时它还盖在页面上
+  sheetVisible.value = false
+
+  // JSON.stringify → encodeURIComponent：中文菜名、& ? # 这些字符不编码会把 URL 拆坏
+  const items = encodeURIComponent(JSON.stringify(cart.value))
+
+  uni.navigateTo({
+    url: `/pages/order/confirm?items=${items}`,
+    fail: (err) => {
+      console.error('[dish-list] 打开结算页失败：', err)
+      uni.showToast({ title: '打开结算页失败，请重试', icon: 'none' })
+    }
+  })
 }
 
 /** 点卡片空白处进详情；点收藏/点菜时已用 .stop 拦下，不会走到这里 */

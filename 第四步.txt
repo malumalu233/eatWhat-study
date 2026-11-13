@@ -1,0 +1,103 @@
+第四步：实现「下单 / 结算」功能（家庭点餐小程序）
+
+请严格按照以下步骤执行并输出结果，确保代码符合微信小程序最新设计规范。技术栈保持：前端 uni-app，后端微信云开发 CloudBase（云函数 Node.js + 云数据库 NoSQL + 云存储）。
+
+## 一、数据库设计
+
+1. 新建 `orders` 集合，字段如下：
+   - `_openid`：创建者标识（由云函数自动注入）
+   - `items`：订单菜品数组，每项包含 `{dishId, name, cover}` 三字段，其中 `name` 和 `cover` 为下单时的快照，防止后续菜品改名/删图影响历史订单展示
+   - `remark`：用户备注（可选字符串）
+   - `status`：订单状态，枚举值 `pending`（待处理）/ `completed`（已完成）/ `cancelled`（已取消），默认 `pending`
+   - `mealTime`：用餐时段，枚举值 `breakfast` / `lunch` / `dinner` / `supper`
+   - `createTime`：创建时间戳
+
+2. 在云开发控制台中创建 `orders` 集合，权限设置为「仅创建者可读写」。
+
+## 二、云函数改造
+
+在已有的 `cloudfunctions/dish/index.js` 中新增三个 action，统一通过 `switch(action)` 分发：
+
+1. **`createOrder`**：
+   - 接收参数：`{ items: [{ dishId }], mealTime, remark }`
+   - **服务端校验**：对每个 `dishId` 查询 `dishes` 集合，确认该菜品存在且 `_openid` 与当前登录用户一致；若任一菜品不存在或归属不符，返回 `code:403, msg:'菜品不可用'`
+   - 校验通过后，从 `dishes` 表中读取每道菜的 `name` 和第一张图的 `fileID`（即 `cover`），组装 `items` 快照
+   - 向 `orders` 集合 `add()` 一条记录，`_openid` 必须手动补上（云函数 `add()` 不会自动注入）
+   - 返回 `code:0, data:{ orderId }`
+
+2. **`listOrders`**：
+   - 接收参数：`{ page, pageSize }`，默认 `page=1, pageSize=20`
+   - 按 `_openid` 过滤，按 `createTime` 倒序排列，使用 `skip().limit()` 分页
+   - 返回 `{ code:0, data:{ list:[...], total } }`
+
+3. **`cancelOrder`**：
+   - 接收参数：`{ _id }`
+   - 校验该订单 `_openid` 与当前用户一致，不一致则返回 `code:403`
+   - 将 `status` 更新为 `cancelled`，返回 `code:0`
+
+所有新 action 的返回格式必须与已有 action 保持一致：成功 `{ code:0, data }`，失败 `{ code:4xx/5xx, msg }`。
+
+## 三、前端 API 层
+
+在 `src/api/dish.js` 中追加三个接口函数，命名与云函数 action 对应：
+
+```js
+export async function createOrder(payload) { /* action: 'createOrder' */ }
+export async function listOrders(filter = {}) { /* action: 'listOrders' */ }
+export async function cancelOrder(id) { /* action: 'cancelOrder' */ }
+```
+
+注释说明：这些接口复用已有的 `callFunction(FN_DISH, ...)` 封装，不直接出现 `wx.cloud`。
+
+## 四、页面实现
+
+### 4.1 新增 `pages/order/confirm.vue`（结算页）
+
+- **布局**：顶部标题「确认下单」；中间区域罗列已选菜品（来自 list.vue 传入的 `cart` 数据，通过路由参数 `?items=JSON.stringify([...])` 传递，每项显示封面缩略图 + 菜名）；菜品下方提供餐次选择器（单选按钮组：早餐/午餐/晚餐/宵夜），系统根据当前小时自动选中默认值（6:00-9:59→早餐，11:00-13:59→午餐，17:00-19:59→晚餐，其余→宵夜）；再下方是备注输入框（textarea，最多 200 字）；右下角浮动按钮「确认下单」（主题色胶囊形按钮）
+- **交互逻辑**：点击「确认下单」时调用 `createOrder`，成功后 `uni.showToast({ title: '下单成功', icon: 'success' })`，然后 `uni.redirectTo({ url: '/pages/index/index' })` 返回首页
+- **UI 规范**：严格遵循温馨日系治愈风（配色 #FFF9F0/#FFB88C/#D6E4D0/#EAEAEA/#5C4B3E；圆角 12rpx 基准拒绝直角；PingFang SC 标题 18px 加粗、正文 14px、辅助 12px；插画复用 LineArt；淡入淡出 + 上滑动效、大量留白；字段间距 $gap-md、内边距 $gap-lg）
+
+### 4.2 改造 `pages/dish/list.vue`
+
+- 「去结算」按钮点击后跳转：`uni.navigateTo({ url: `/pages/order/confirm?items=${encodeURIComponent(JSON.stringify(cart.value))}` })`
+- 保留原有的 toast 提示作为降级（如果 cart 为空则不跳转）
+
+### 4.3 改造 `pages/index/index.vue`
+
+- 在首页新增「最近点菜」区块，位置在「今天吃什么」卡片之后
+- 调用 `listOrders({ page: 1, pageSize: 3 })` 获取最近三条订单
+- 每条订单展示内容：
+  - 左侧：大标签固定显示餐次文字（早餐/午餐/晚餐/宵夜），不同餐次对应不同柔和颜色（早餐 #FFB88C 暖橘杏、午餐 #D6E4D0 抹茶绿、晚餐 #EAEAEA 浅灰、宵夜 #C4D9BA 深抹茶）
+  - 中间：菜品名称列表（取 items 中第一个菜名，超过两个用省略号截断）
+  - 右侧：右对齐日期，灰色小号字体（22rpx），格式 MM-dd
+- 整体卡片样式：圆角 12rpx，白色底，柔和投影，垂直流式排列
+
+## 五、视觉与动效规范
+
+- **配色**：背景 #FFF9F0、主题色 #FFB88C、抹茶绿 #D6E4D0、浅灰 #EAEAEA、深咖 #5C4B3E
+- **造型**：所有圆角组件基准 12rpx，拒绝直角；胶囊形按钮两端半圆全圆角
+- **字体**：PingFang SC，标题 18px(36rpx) 加粗、正文 14px(28rpx)、辅助 12px(24rpx)，行距宽松 1.6~1.8
+- **插画**：复用 `LineArt` 组件（bowl/plate/star 等类型）
+- **动效**：淡入淡出 + 上滑动效，大量留白，点击反馈 scale(0.96~0.98)
+- **表单布局**：字段间距 $gap-md(24rpx)，内边距 $gap-lg(40rpx)
+
+## 六、交付文档
+
+在完成上述代码后，单独生成一份《第四步知识要点》文档，结构参考第三步知识要点，包含：
+- 第 0 节：手动清单（建 orders 集合、重传 dish 云函数、验证步骤）
+- 第 1 节：数据流图（下单链路、首页拉取链路）
+- 第 2 节：关键命令（云函数 add/update/skip/limit、_inc 原子操作等）
+- 第 3 节：核心知识点（快照冗余的意义、服务端校验的必要性、餐次动态默认值逻辑、路由参数 JSON 序列化注意事项、分页 skip 的性能边界、订单状态机、$emit/$on/$off 跨页通信等，至少 10 个知识点）
+- 第 4 节：常见陷阱表（至少 10 条，如云函数 add() 不自动补 _openid、items 数组不能直接传 fileID 需转 previewImage URL、JSON.stringify 编码长度限制等）
+- 第 5 节：文件结构与数据模型（新增/修改的文件清单、orders 文档结构示例、云函数 action 清单）
+- 第 6 节：视觉规范对照（各组件尺寸、颜色、字体数值汇总）
+- 第 7 节：与需求文档的偏差说明（如有取舍需明确列出）
+- 第 8 节：第五步预告（可选方向：订单管理页、 mealTime 索引优化等）
+
+## 七、注意事项
+
+- **代码注释**：所有关键逻辑必须包含详细注释，特别是针对初学者容易困惑的地方（如为什么需要快照冗余、为什么服务端要重新校验菜品归属、为什么 add() 不自动注入 _openid 等）
+- **设计规范**：确保所有 UI 元素符合微信小程序最新设计规范，不使用已废弃的 API（如 wx.cloud.callFunction 仍可用，但不要用 wx.cloud.init 在页面里重复初始化）
+- **范围控制**：本次仅完成第四步的菜品结算功能，不要提前实现后续步骤的功能（如查看全部历史订单、订单详情、分享订单等）
+- **兼容性**：代码需在微信开发者工具中编译通过，支持真机预览；构建产物 `dist/build/mp-weixin` 和 `dist/dev/mp-weixin` 均需正常生成
+- **性能考量**：首页「最近点菜」只拉 3 条，避免一次性加载过多；listOrders 的分页上限不超过 50 条/页

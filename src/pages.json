@@ -35,6 +35,12 @@
 			"style": {
 				"navigationBarTitleText": "菜品详情"
 			}
+		},
+		{
+			"path": "pages/order/confirm",
+			"style": {
+				"navigationBarTitleText": "确认下单"
+			}
 		}
 	],
 	"globalStyle": {

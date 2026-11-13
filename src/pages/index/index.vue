@@ -41,22 +41,32 @@
       </view>
     </view>
 
-    <!-- ============ 历史点菜记录 ============ -->
+    <!-- ============ 最近点菜（第四步接入真实数据） ============ -->
     <view class="section">
       <view class="section__head">
         <text class="section__title">最近点菜</text>
+        <text class="section__extra">最近 {{ RECENT_SIZE }} 次</text>
       </view>
 
-      <view v-if="records.length === 0" class="empty anim-fade">
-        <LineArt type="bowl" size="sm" />
-        <text class="empty__text">还没有点菜记录</text>
+      <view v-if="recentOrders.length === 0" class="empty anim-fade">
+        <LineArt type="plate" size="sm" />
+        <text class="empty__text">还没有点菜记录，先去「今天吃什么」选几道菜吧</text>
       </view>
 
-      <!-- 后续步骤会渲染真实记录，这里保留列表结构方便你对照 -->
       <view v-else class="record-list">
-        <view v-for="item in records" :key="item._id" class="record-item">
-          <text class="record-item__name">{{ item.name }}</text>
-          <text class="t-helper">{{ item.time }}</text>
+        <view v-for="order in recentOrders" :key="order._id" class="record-item anim-up">
+          <!-- 左侧：餐次大标签，四餐各自一套主题色（与结算页的单选组同一份配置） -->
+          <view class="meal-tag" :style="{ backgroundColor: mealOf(order).color }">
+            <text class="meal-tag__text" :style="{ color: mealOf(order).textColor }">
+              {{ mealOf(order).label }}
+            </text>
+          </view>
+
+          <!-- 中间：菜名（超过两道用省略号截断） -->
+          <text class="record-item__dishes">{{ dishesText(order) }}</text>
+
+          <!-- 右侧：日期右对齐，灰色小号字 -->
+          <text class="record-item__date">{{ dateText(order.createTime) }}</text>
         </view>
       </view>
     </view>
@@ -69,9 +79,14 @@ import { onShow } from '@dcloudio/uni-app'
 import LineArt from '@/components/LineArt.vue'
 import { userStore, displayName } from '@/store/user'
 import { loginSilently } from '@/api/user'
+import { listOrders } from '@/api/dish'
+import { getMealMeta } from '@/config'
 
-/** 点菜记录：第一步只留空数组，等第五步再接云数据库 */
-const records = ref([])
+/** 首页只展示最近 3 条订单：多了会抢首页的呼吸感，也增加无关请求 */
+const RECENT_SIZE = 3
+
+/** 最近点菜列表（来自 orders 集合） */
+const recentOrders = ref([])
 
 /** 按时间段给一句问候，长辈也能一眼看懂 */
 const greeting = computed(() => {
@@ -103,13 +118,59 @@ const todayTip = computed(() => {
 })
 
 /**
+ * 拉「最近点菜」
+ *
+ * 为什么只拉 3 条？
+ * 首页是展示性的，用户真要管理订单时会去订单页（后续步骤）。
+ * 3 条足够提醒「上一餐吃了什么」，同时把首屏请求压到最小。
+ */
+async function loadRecentOrders() {
+  try {
+    const res = await listOrders({ page: 1, pageSize: RECENT_SIZE })
+    recentOrders.value = (res && res.list) || []
+  } catch (err) {
+    // 首页不能因为订单查询失败就白屏：记日志，静默降级成空列表
+    console.error('[home] 加载最近点菜失败：', err)
+    recentOrders.value = []
+  }
+}
+
+/** 取餐次配置（文字 + 配色）；非法值由 getMealMeta 兜底成宵夜，页面不会出现空白标签 */
+function mealOf(order) {
+  return getMealMeta(order && order.mealTime)
+}
+
+/**
+ * 中间那行的菜名
+ * - 1~2 道：全部列出，颠号连接
+ * - 超过 2 道：只留前两道 + 省略号 + 总数，否则一行文字会把日期挤掉
+ */
+function dishesText(order) {
+  const names = ((order && order.items) || []).map((item) => item.name).filter(Boolean)
+  if (names.length === 0) return '空订单'
+  if (names.length <= 2) return names.join('、')
+  return `${names.slice(0, 2).join('、')}…等${names.length}道`
+}
+
+/** 时间戳 → MM-dd（右侧灰色小字，长辈看日期比看时间更有用） */
+function dateText(ts) {
+  const date = new Date(ts || Date.now())
+  const pad = (n) => (n < 10 ? `0${n}` : `${n}`)
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+/**
  * 每次页面显示时检查登录态：
  * 如果首屏登录失败（比如云环境还没配好），用户重进页面会自动重试
+ *
+ * 顺便刷新「最近点菜」：从结算页 switchTab 回来时必须能看到刚下的单，
+ * 所以这里不做缓存、每次 onShow 都拉一次（就 3 条，开销可忽略）。
  */
-onShow(() => {
+onShow(async () => {
   if (!userStore.logged && !userStore.loading) {
-    loginSilently()
+    await loginSilently()
   }
+  loadRecentOrders()
 })
 
 /** 手动点「微信快捷登录」 */
@@ -249,27 +310,65 @@ async function goDishList() {
   line-height: 1.6;
 }
 
-/* ---------------- 点菜记录 ---------------- */
+/* ---------------- 最近点菜 ---------------- */
+/* 需求明确：单条记录是「圆角 12rpx 白底卡片 + 柔和投影」，垂直流式排列 */
+.section__extra {
+  font-size: 22rpx;
+  color: $c-text-sub;
+}
 .record-list {
-  background-color: $c-white;
-  border-radius: $r-lg;
-  box-shadow: $shadow-soft;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .record-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: $gap-md $gap-lg;
-  border-bottom: 1rpx solid $c-gray;
+  margin-bottom: $gap-sm;
+  padding: $gap-md;
+  border-radius: $r-sm;
+  background-color: $c-white;
+  box-shadow: $shadow-soft;
+  transition: transform 0.16s ease;
 
   &:last-child {
-    border-bottom: none;
+    margin-bottom: 0;
+  }
+  /* 轻微按下反馈，替代系统灰底高亮 */
+  &:active {
+    transform: scale(0.985);
   }
 }
-.record-item__name {
+
+/* 左侧餐次大标签：固定宽高，四餐各自的主题色由 :style 绑定 */
+.meal-tag {
+  width: 96rpx;
+  height: 56rpx;
+  flex-shrink: 0;
+  border-radius: $r-sm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.meal-tag__text {
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+/* 中间菜名：flex:1 负责占满，min-width:0 才能让单行省略生效 */
+.record-item__dishes {
+  flex: 1;
+  min-width: 0;
+  margin: 0 $gap-sm;
   font-size: $f-body;
   color: $c-coffee;
+  @include ellipsis;
+}
+
+/* 右侧日期：右对齐、灰色小号 22rpx */
+.record-item__date {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: $c-text-sub;
 }
 /* empty 里的两行文案需要贴紧一点，覆盖全局 12rpx 的间距 */
 .empty__text + .empty__text {

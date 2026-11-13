@@ -192,3 +192,68 @@ export async function toggleFavorite(dishId) {
   }
   return res.data
 }
+
+/* ========================================================================
+   订单相关（第四步新增）
+   ------------------------------------------------------------------------
+   订单和菜品共用同一个云函数 `dish`（需求就是这么定的），
+   所以这里也继续复用 callFunction(FN_DISH, ...)，页面里依旧看不到 wx.cloud。
+   以后订单接口多了（比如订单管理页），再把它们搬到 api/order.js 即可，
+   函数体一行都不用改。
+   ======================================================================== */
+
+/**
+ * 下单
+ * @param {{items:Array<{dishId:string}>, mealTime:string, remark?:string}} payload
+ *   items 只传 dishId 就够了！菜名与封面由云函数从数据库里读出来做快照，
+ *   只有这样历史订单才不会被「后来改菜名 / 删图片」影响，也避免前端伪造内容。
+ * @returns {Promise<{orderId:string}>}
+ */
+export async function createOrder(payload) {
+  const res = await callFunction(FN_DISH, {
+    action: 'createOrder',
+    data: payload
+  })
+
+  if (!res || res.code !== 0) {
+    throw new Error((res && res.msg) || '下单失败')
+  }
+  return res.data
+}
+
+/**
+ * 查询我的订单列表
+ * @param {{page?:number, pageSize?:number}} filter
+ * @returns {Promise<{list:object[], total:number}>}
+ *   每条订单形如 { _id, _openid, items:[{dishId,name,cover}], remark, status, mealTime, createTime }
+ */
+export async function listOrders(filter = {}) {
+  const res = await callFunction(FN_DISH, {
+    action: 'listOrders',
+    filter
+  })
+
+  if (!res || res.code !== 0) {
+    throw new Error((res && res.msg) || '加载订单失败')
+  }
+  return res.data
+}
+
+/**
+ * 取消订单（只能取消自己「待处理」的订单，校验在云函数里）
+ *
+ * 本步还没有取消入口，这个接口先备好；
+ * 第五步做订单管理页时直接调，不用回头改云函数。
+ * @param {string} id 订单 _id
+ */
+export async function cancelOrder(id) {
+  const res = await callFunction(FN_DISH, {
+    action: 'cancelOrder',
+    data: { _id: id }
+  })
+
+  if (!res || res.code !== 0) {
+    throw new Error((res && res.msg) || '取消失败')
+  }
+  return res.data
+}

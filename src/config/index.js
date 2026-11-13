@@ -52,3 +52,58 @@ export const DISH_LIMITS = {
   /** 制作步骤最大长度 */
   stepsMax: 500
 }
+
+/**
+ * 用餐时段（第四步新增）——「唯一数据源」的又一个例子
+ *
+ * 这一份数据同时被三个地方使用：
+ *   ① 结算页 `pages/order/confirm.vue` 的单选按钮组（文字 + 选中底色）
+ *   ② 首页「最近点菜」的餐次标签（文字 + 底色 + 文字色）
+ *   ③ 云函数 `createOrder` 的合法值校验
+ *
+ * ⚠️ 云函数跑在 Node.js 里，不能 import 前端这份文件（构建产物不在一起），
+ * 所以 `cloudfunctions/dish/index.js` 顶部维护了一份 MEAL_TIMES 字符串数组。
+ * 加餐次时两边一起改 —— 这是「前后端各自构建」导致的必要重复，不是疏忽。
+ *
+ * 颜色取值来自需求：早餐暖橘杏 #FFB88C、午餐抹茶绿 #D6E4D0、
+ * 晚餐浅灰 #EAEAEA、宵夜深抹茶 #C4D9BA。
+ * textColor 是配套的文字色：浅底必须配深字，否则对比度不足、长辈看不清。
+ */
+export const MEAL_TIMES = [
+  { value: 'breakfast', label: '早餐', color: '#FFB88C', textColor: '#8a5a2b' },
+  { value: 'lunch', label: '午餐', color: '#D6E4D0', textColor: '#4c5c44' },
+  { value: 'dinner', label: '晚餐', color: '#EAEAEA', textColor: '#6b6157' },
+  { value: 'supper', label: '宵夜', color: '#C4D9BA', textColor: '#43553c' }
+]
+
+/**
+ * 按 value 找餐次配置
+ * 传入非法值时兜底返回「宵夜」而不是 undefined，
+ * 这样页面上永远不会出现 `undefined` 或空白标签（老数据 / 手改数据库都可能造出脏值）。
+ */
+export function getMealMeta(value) {
+  const found = MEAL_TIMES.find((item) => item.value === value)
+  return found || MEAL_TIMES[MEAL_TIMES.length - 1]
+}
+
+/**
+ * 订单状态枚举（第四步新增）
+ *
+ * 状态机：pending（待处理）→ completed（已完成）
+ *                          ↘ cancelled（已取消）
+ * 只允许「待处理」被取消，已完成的订单不能回退 —— 校验放在云函数里。
+ * 本步只用到 pending 与 cancelled（取消入口留给后续的订单管理页）。
+ */
+export const ORDER_STATUS = {
+  PENDING: 'pending',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled'
+}
+
+/** 订单相关限制（与云函数里的常量保持一致） */
+export const ORDER_LIMITS = {
+  /** 备注最多多少个字 */
+  remarkMax: 200,
+  /** 一单最多点几道菜：防止异常请求把数据库文档撑爆 */
+  itemsMax: 50
+}
